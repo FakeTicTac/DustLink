@@ -6,7 +6,7 @@
 	"Description": "Simplifies multiplayer session creation and management",
 	"Category": "Other",
 	"CreatedBy": "Dustbyte Software",
-	"CanContainContent": false,
+	"CanContainContent": true,
 	"IsBetaVersion": true,
 	"IsExperimentalVersion": false,
 	"Installed": true,

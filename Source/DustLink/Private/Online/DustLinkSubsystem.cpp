@@ -1,6 +1,6 @@
 // Copyright Dustbyte Software. All Rights Reserved.
 
-#include "Online/DustLinkSubsystem.h"
+#include "DustLink/Public/Online/DustLinkSubsystem.h"
 
 #include "OnlineSubsystemUtils.h"
 

@@ -23,7 +23,10 @@ public class DustLink : ModuleRules
 			{
 				"Core",
 				"OnlineSubsystem",
-				"OnlineSubsystemSteam"
+				"OnlineSubsystemSteam",
+				"UMG",
+				"Slate",
+				"SlateCore",
 			}
 		);
 		
