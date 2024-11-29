@@ -2,7 +2,10 @@
 
 #include "DustLink/Public/Online/DustLinkSubsystem.h"
 
+#include "OnlineSessionSettings.h"
+#include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
+#include "Online/OnlineSessionNames.h"
 
 
 /**
@@ -33,7 +36,7 @@ void UDustLinkSubsystem::InitializeOnlineSessionInterface()
 
 	if (!World)
 	{
-		UE_LOG(LogTemp, Error, TEXT("%s: Failed to retrieve world context."), *GetClass()->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("%s: Failed to retrieve world context."), *GetClass()->GetName());
 		return;
 	}
 
@@ -41,7 +44,7 @@ void UDustLinkSubsystem::InitializeOnlineSessionInterface()
 
 	if (!Subsystem)
 	{
-		UE_LOG(LogTemp, Error, TEXT("%s: OnlineSubsystem not found."), *GetClass()->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("%s: OnlineSubsystem not found."), *GetClass()->GetName());
 		return;
 	}
 	
@@ -56,9 +59,49 @@ void UDustLinkSubsystem::InitializeOnlineSessionInterface()
  * @param NumPublicConnections The number of available slots for players in the session.
  * @param MatchType A string identifier for the type of match (e.g., "Deathmatch", "Coop").
  */
-void UDustLinkSubsystem::CreateSession(int32 NumPublicConnections, FString MatchType)
+void UDustLinkSubsystem::CreateSession(const int32 NumPublicConnections, const FString& MatchType)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process creation."), *GetClass()->GetName());
+		return;
+	}
+
+	// Destroy existing session
+	if (OnlineSessionInterface->GetNamedSession(NAME_GameSession)) OnlineSessionInterface->DestroySession(NAME_GameSession);
+
+	// Store the registered Delegate, so that it can be later removed from delegate list
+	CreateSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
+	CreateSessionSettings(NumPublicConnections, MatchType);
+
+	if (const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController(); !OnlineSessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *LastSessionSettings))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Couldn't create session."), *GetClass()->GetName());
+		OnlineSessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
+		DustLinkOnCreateSessionComplete.Broadcast(false);
+	}
+}
+
+/**
+ * @brief Creates and initializes session settings.
+ *
+ * This method sets up the configuration for an online session, such as the number of public connections,
+ * the match type, and other customizable parameters. The settings are stored in the `LastSessionSettings` field.
+ *
+ * @param NumPublicConnections The maximum number of players allowed in the session, excluding the host.
+ * @param MatchType A string identifier for the session type (e.g., "Deathmatch", "Coop").
+ */
+void UDustLinkSubsystem::CreateSessionSettings(const int32 NumPublicConnections, const FString& MatchType)
+{
+	LastSessionSettings = MakeShareable(new FOnlineSessionSettings());
+	LastSessionSettings->bIsLANMatch = Online::GetSubsystem(GetWorld())->GetSubsystemName() == "NULL";
+	LastSessionSettings->NumPublicConnections = NumPublicConnections;
+	LastSessionSettings->bAllowJoinInProgress = true;
+	LastSessionSettings->bAllowJoinInProgress = true;
+	LastSessionSettings->bShouldAdvertise = true;
+	LastSessionSettings->bUsesPresence = true;
+	LastSessionSettings->bUseLobbiesIfAvailable = true;
+	LastSessionSettings->Set(FName("MatchType"), MatchType, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 }
 
 /**
@@ -67,11 +110,27 @@ void UDustLinkSubsystem::CreateSession(int32 NumPublicConnections, FString Match
  * This method queries the online subsystem for available sessions matching the specified criteria.
  * 
  * @param MaxSearchResults The maximum number of results to retrieve.
- * @param MatchType A string identifier for filtering sessions by match type.
  */
-void UDustLinkSubsystem::FindSessions(int32 MaxSearchResults, FString MatchType)
+void UDustLinkSubsystem::FindSessions(const int32 MaxSearchResults)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process creation."), *GetClass()->GetName());
+		return;
+	}
+
+	FindSessionsCompleteDelegateHandle = OnlineSessionInterface->AddOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegate);
+	
+	LastSessionSearch = MakeShareable(new FOnlineSessionSearch());
+	LastSessionSearch->MaxSearchResults = MaxSearchResults;
+	LastSessionSearch->bIsLanQuery = Online::GetSubsystem(GetWorld())->GetSubsystemName() == "NULL";
+	LastSessionSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+
+	if (const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController(); !OnlineSessionInterface->FindSessions(*LocalPlayer->GetPreferredUniqueNetId(), LastSessionSearch.ToSharedRef()))
+	{
+		OnlineSessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegateHandle);
+		DustLinkOnFindSessionsComplete.Broadcast(TArray<FOnlineSessionSearchResult>(), false);
+	}
 }
 
 /**
@@ -83,7 +142,20 @@ void UDustLinkSubsystem::FindSessions(int32 MaxSearchResults, FString MatchType)
  */
 void UDustLinkSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface.IsValid())
+	{
+		DustLinkOnJoinSessionComplete.Broadcast(EOnJoinSessionCompleteResult::UnknownError);
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process creation."), *GetClass()->GetName());
+		return;
+	}
+
+	JoinSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+
+	if (const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController(); !OnlineSessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, SessionResult))
+	{
+		OnlineSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
+		DustLinkOnJoinSessionComplete.Broadcast(EOnJoinSessionCompleteResult::UnknownError);
+	}
 }
 
 /**
@@ -93,7 +165,7 @@ void UDustLinkSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionRe
  */
 void UDustLinkSubsystem::DestroySession()
 {
-	//@TODO: Awaiting implementation
+	//@TODO: Awaiting implementatio
 }
 
 /**
@@ -114,9 +186,16 @@ void UDustLinkSubsystem::StartSession()
  * @param SessionName The name of the session that was created.
  * @param bWasSuccessful Whether the session creation was successful.
  */
-void UDustLinkSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
+void UDustLinkSubsystem::OnCreateSessionComplete(FName SessionName, const bool bWasSuccessful)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session Interface is not defined."), *GetClass()->GetName());
+		return;
+	}
+	
+	OnlineSessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
+	DustLinkOnCreateSessionComplete.Broadcast(bWasSuccessful);
 }
 
 /**
@@ -128,7 +207,16 @@ void UDustLinkSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuc
  */
 void UDustLinkSubsystem::OnFindSessionComplete(bool bWasSuccessful)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session Interface is not defined."), *GetClass()->GetName());
+		return;
+	}
+	
+	if (LastSessionSearch->SearchResults.Num() <= 0) bWasSuccessful = false;
+
+	OnlineSessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegateHandle);
+	DustLinkOnFindSessionsComplete.Broadcast(LastSessionSearch->SearchResults, bWasSuccessful);
 }
 
 /**
@@ -141,7 +229,14 @@ void UDustLinkSubsystem::OnFindSessionComplete(bool bWasSuccessful)
  */
 void UDustLinkSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session Interface is not defined."), *GetClass()->GetName());
+		return;
+	}
+
+	OnlineSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
+	DustLinkOnJoinSessionComplete.Broadcast(Result);
 }
 
 /**

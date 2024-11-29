@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Interfaces/OnlineSessionInterface.h"
 
 #include "DustLinkMenu.generated.h"
 
@@ -26,15 +27,25 @@ public:
 	/**
 	 * @brief Sets up the menu and its components.
 	 *
-	 * This function is called to initialize the menu widget, bind necessary events,
-	 * and prepare it for display. It should be called before adding the widget to the viewport.
+	 * This function initializes the menu widget, binds necessary events, and prepares it for display.
+	 * It also configures the default session settings, such as the number of public connections
+	 * and the type of match. This method should be called before adding the widget to the viewport.
 	 *
-	 * Usage:
-	 * - Call this function in Blueprint or C++ to configure the menu before showing it to the player.
+	 * @param NumberOfPublicConnections The default number of player slots available in the session (default is 4).
+	 * @param TypeOfMatch A string identifier for the session type (e.g., "Deathmatch", "Coop"). Default is "Error404".
 	 */
 	UFUNCTION(BlueprintCallable)
-	void MenuSetup();
+	void MenuSetup(const int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString("Error404"));
 
+	/**
+	 * @brief Tears down the menu and its components.
+	 *
+	 * This method removes the menu widget from the viewport and cleans up any associated resources or bindings.
+	 * It should be called when the menu is no longer needed (e.g., transitioning to gameplay).
+	 */
+	UFUNCTION(BlueprintCallable)
+	void MenuTearDown();
+	
 protected:
 
 	/**
@@ -48,6 +59,69 @@ protected:
 	 */
 	virtual bool Initialize() override;
 
+	/**
+	 * @brief Called when the widget is about to be destroyed.
+	 *
+	 * This method is automatically invoked when the widget is removed from the viewport
+	 * and is being deallocated. It is overridden to perform cleanup tasks such as
+	 * unbinding delegates, releasing resources, or resetting subsystem references.
+	 */
+	virtual void NativeDestruct() override;
+
+	/**
+	 * @brief Callback for handling the completion of session creation.
+	 *
+	 * This method is triggered after attempting to create a session. It processes the result,
+	 * such as logging success or failure, and performs any additional actions based on the outcome.
+	 *
+	 * @param bWasSuccessful Indicates whether the session creation was successful.
+	 */
+	UFUNCTION()
+	void OnCreateSession(const bool bWasSuccessful);
+
+	/**
+	 * @brief Callback for handling the completion of session destruction.
+	 *
+	 * This method is triggered after attempting to destroy a session. It processes the result,
+	 * such as logging success or failure, and performs cleanup tasks if necessary.
+	 *
+	 * @param bWasSuccessful Indicates whether the session destruction was successful.
+	 */
+	UFUNCTION()
+	void OnDestroySession(const bool bWasSuccessful);
+
+	/**
+	 * @brief Callback for handling the completion of starting a session.
+	 *
+	 * This method is triggered after attempting to start a session. It processes the result,
+	 * such as logging success or failure, and performs any additional actions based on the outcome.
+	 *
+	 * @param bWasSuccessful Indicates whether the session start was successful.
+	 */
+	UFUNCTION()
+	void OnStartSession(const bool bWasSuccessful);
+
+	/**
+	 * @brief Callback for handling the completion of a session search.
+	 *
+	 * This method is triggered after attempting to find sessions. It processes the search results,
+	 * logs the outcome, and displays or handles the found sessions as needed.
+	 *
+	 * @param SessionResults An array of `FOnlineSessionSearchResult` containing the found sessions.
+	 * @param bWasSuccessful Indicates whether the session search was successful.
+	 */
+	void OnFindSessions(const TArray<FOnlineSessionSearchResult>& SessionResults, const bool bWasSuccessful);
+	
+	/**
+	 * @brief Callback for handling the completion of joining a session.
+	 *
+	 * This method is triggered after attempting to join a session. It processes the result,
+	 * such as logging success or failure, and performs any additional actions based on the outcome.
+	 *
+	 * @param Result The result of the join operation, represented as `EOnJoinSessionCompleteResult::Type`.
+	 */
+	void OnJoinSession(const EOnJoinSessionCompleteResult::Type Result);
+	
 private:
 
 	/**
@@ -67,6 +141,25 @@ private:
 	 */
 	UPROPERTY(meta = (BindWidget))
 	UButton* JoinButton;
+
+	/**
+	 * @brief Number of public connections available in the session.
+	 *
+	 * This property defines the maximum number of players (excluding the host) that can join the session.
+	 * The default value is 4, but it can be adjusted when initializing the menu or creating a session.
+	 */
+	UPROPERTY()
+	int32 NumPublicConnections {4};
+
+	/**
+	 * @brief Match type identifier for the session.
+	 *
+	 * This property specifies the type of match (e.g., "Deathmatch", "Coop").
+	 * It is used for filtering sessions during search or categorizing session settings.
+	 * The default value is "Error404", indicating that the type should be explicitly set.
+	 */
+	UPROPERTY()
+	FString MatchType {TEXT("Error404")};
 
 	/**
 	 * @brief Reference to the DustLinkSubsystem.

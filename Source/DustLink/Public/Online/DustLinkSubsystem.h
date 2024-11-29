@@ -1,14 +1,47 @@
 // Copyright Dustbyte Software. All Rights Reserved.
 
+// ReSharper disable CppBoundToDelegateMethodIsNotMarkedAsUFunction
+
 #pragma once
 
 #include "CoreMinimal.h"
+#include "OnlineSubsystem.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
 
 #include "DustLinkSubsystem.generated.h"
 
-class IOnlineSession;
+/**
+ * Notifies subscribers about the result of the session creation process.
+ * @param bWasSuccessful Indicates whether the session creation was successful.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDustLinkOnCreateSessionComplete, const bool, bWasSuccessful);
+
+/**
+ * Notifies subscribers about the result of the session destruction process.
+ * @param bWasSuccessful Indicates whether the session was successfully destroyed.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDustLinkOnDestroySessionComplete, const bool, bWasSuccessful);
+
+/**
+ * Notifies subscribers about the result of the session start process.
+ * @param bWasSuccessful Indicates whether the session was successfully started.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDustLinkOnStartSessionComplete, const bool, bWasSuccessful);
+
+/**
+ * Notifies subscribers about the result of the session search process and provides
+ * a list of found session results.
+ * @param SessionResults An array of `FOnlineSessionSearchResult` containing the found sessions.
+ * @param bWasSuccessful Indicates whether the search was successful.
+ */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FDustLinkOnFindSessionsComplete, const TArray<FOnlineSessionSearchResult>& SessionResults, const bool bWasSuccessful);
+
+/**
+ * Notifies subscribers about the result of an attempt to join a session.
+ * @param Result The result of the join operation, represented as `EOnJoinSessionCompleteResult::Type`.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FDustLinkOnJoinSessionComplete, const EOnJoinSessionCompleteResult::Type Result);
 
 
 /**
@@ -45,17 +78,27 @@ public:
 	 * @param NumPublicConnections The number of available slots for players in the session.
 	 * @param MatchType A string identifier for the type of match (e.g., "Deathmatch", "Coop").
 	 */
-	void CreateSession(int32 NumPublicConnections, FString MatchType);
+	void CreateSession(const int32 NumPublicConnections, const FString& MatchType);
 
+	/**
+	 * @brief Creates and initializes session settings.
+	 *
+	 * This method sets up the configuration for an online session, such as the number of public connections,
+	 * the match type, and other customizable parameters. The settings are stored in the `LastSessionSettings` field.
+	 *
+	 * @param NumPublicConnections The maximum number of players allowed in the session, excluding the host.
+	 * @param MatchType A string identifier for the session type (e.g., "Deathmatch", "Coop").
+	 */
+	void CreateSessionSettings(const int32 NumPublicConnections, const FString& MatchType);
+	
 	/**
 	 * @brief Searches for available online sessions.
 	 *
 	 * This method queries the online subsystem for available sessions matching the specified criteria.
 	 * 
 	 * @param MaxSearchResults The maximum number of results to retrieve.
-	 * @param MatchType A string identifier for filtering sessions by match type.
 	 */
-	void FindSessions(int32 MaxSearchResults, FString MatchType);
+	void FindSessions(const int32 MaxSearchResults);
 
 	/**
 	 * @brief Joins an existing session.
@@ -79,6 +122,47 @@ public:
 	 * Signals the start of the session, allowing gameplay to commence.
 	 */
 	void StartSession();
+
+	/**
+	 * @brief Delegate triggered when session creation is complete.
+	 *
+	 * This delegate is called to notify subscribers about the result of the session creation process.
+	 * It encapsulates custom logic for handling session creation success or failure within the DustLink subsystem.
+	 */
+	FDustLinkOnCreateSessionComplete DustLinkOnCreateSessionComplete;
+
+	
+	/**
+	 * @brief Delegate triggered when the session search is complete.
+	 *
+	 * This delegate notifies subscribers about the result of a session search, providing
+	 * the found sessions and the success status. It is used to process and display available sessions.
+	 */
+	FDustLinkOnFindSessionsComplete DustLinkOnFindSessionsComplete;
+
+	/**
+	 * @brief Delegate triggered when joining a session is complete.
+	 *
+	 * This delegate notifies subscribers about the result of an attempt to join a session.
+	 * It provides the session name and the result status, indicating success or failure.
+	 */
+	FDustLinkOnJoinSessionComplete DustLinkOnJoinSessionComplete;
+
+	/**
+	 * @brief Delegate triggered when session destruction is complete.
+	 *
+	 * This delegate notifies subscribers about the result of a session destruction process.
+	 * It provides the session name and success status, allowing for post-destruction cleanup or logging.
+	 */
+	FDustLinkOnDestroySessionComplete DustLinkOnDestroySessionComplete;
+
+	/**
+	 * @brief Delegate triggered when starting a session is complete.
+	 *
+	 * This delegate notifies subscribers about the result of starting a session.
+	 * It provides the session name and success status, confirming whether the session is ready for gameplay.
+	 */
+	FDustLinkOnStartSessionComplete DustLinkOnStartSessionComplete;
 	
 protected:
 	/**
@@ -97,7 +181,7 @@ protected:
 	 * @param SessionName The name of the session that was created.
 	 * @param bWasSuccessful Whether the session creation was successful.
 	 */
-	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
+	void OnCreateSessionComplete(FName SessionName, const bool bWasSuccessful);
 
 	/**
 	 * @brief Callback for when session search is complete.
@@ -145,8 +229,30 @@ private:
 	 * This pointer provides access to session management functionality from
 	 * the OnlineSubsystem.
 	 */
-	TWeakPtr<IOnlineSession> OnlineSessionInterface;
+	IOnlineSessionPtr OnlineSessionInterface;
 
+	/**
+	 * @brief Stores the settings of the most recently created or joined session.
+	 *
+	 * This shared pointer holds the configuration details for the last active session.
+	 * It includes information such as the number of public connections, session type,
+	 * and custom settings. The pointer ensures the data remains valid as long as it is referenced.
+	 *
+	 * Usage:
+	 * - Use this field to retain session settings for future references, such as rejoining
+	 *   or recreating a session with the same configuration.
+	 * - Ensure the pointer is properly set when creating or joining a session.
+	 */
+	TSharedPtr<FOnlineSessionSettings> LastSessionSettings;
+
+	/**
+	 * @brief Stores the results of the most recent session search.
+	 *
+	 * This shared pointer contains the details of all sessions found during the last search operation.
+	 * It includes session metadata, player counts, and any custom search criteria.
+	 */
+	TSharedPtr<FOnlineSessionSearch> LastSessionSearch;
+	
 	/**
 	 * @brief Delegate triggered when a session creation process is complete.
 	 *
