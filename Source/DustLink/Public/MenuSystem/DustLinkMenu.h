@@ -28,14 +28,16 @@ public:
 	 * @brief Sets up the menu and its components.
 	 *
 	 * This function initializes the menu widget, binds necessary events, and prepares it for display.
-	 * It also configures the default session settings, such as the number of public connections
-	 * and the type of match. This method should be called before adding the widget to the viewport.
+	 * It also configures the default session settings, such as the number of public connections,
+	 * the type of match, and the path to the lobby level. This method should be called before adding
+	 * the widget to the viewport.
 	 *
 	 * @param NumberOfPublicConnections The default number of player slots available in the session (default is 4).
 	 * @param TypeOfMatch A string identifier for the session type (e.g., "Deathmatch", "Coop"). Default is "Error404".
+	 * @param LobbyPath The path to the lobby level where players will gather before starting the session. Default is "/Game/ThirdPerson/Maps/Lobby".
 	 */
 	UFUNCTION(BlueprintCallable)
-	void MenuSetup(const int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString("Error404"));
+	void MenuSetup(const int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString("Error404"), FString LobbyPath = FString("/Game/ThirdPerson/Maps/Lobby"));
 
 	/**
 	 * @brief Tears down the menu and its components.
@@ -160,6 +162,16 @@ private:
 	 */
 	UPROPERTY()
 	FString MatchType {TEXT("Error404")};
+
+	/**
+	 * @brief Path to the lobby level or map.
+	 *
+	 * This property stores the path or name of the level that acts as the lobby
+	 * where players gather before starting the game session. It can be set dynamically
+	 * or through Blueprint/C++ logic.
+	 */
+	UPROPERTY()
+	FString PathToLobby {TEXT("")};
 
 	/**
 	 * @brief Reference to the DustLinkSubsystem.

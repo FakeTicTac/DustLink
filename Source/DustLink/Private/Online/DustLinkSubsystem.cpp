@@ -68,7 +68,14 @@ void UDustLinkSubsystem::CreateSession(const int32 NumPublicConnections, const F
 	}
 
 	// Destroy existing session
-	if (OnlineSessionInterface->GetNamedSession(NAME_GameSession)) OnlineSessionInterface->DestroySession(NAME_GameSession);
+	if (OnlineSessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		bCreateSessionOnDestroy = true;
+		LastNumPublicConnections = NumPublicConnections;
+		LastMatchType = MatchType;
+		
+		DestroySession();
+	}
 
 	// Store the registered Delegate, so that it can be later removed from delegate list
 	CreateSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
@@ -101,6 +108,7 @@ void UDustLinkSubsystem::CreateSessionSettings(const int32 NumPublicConnections,
 	LastSessionSettings->bShouldAdvertise = true;
 	LastSessionSettings->bUsesPresence = true;
 	LastSessionSettings->bUseLobbiesIfAvailable = true;
+	LastSessionSettings->BuildUniqueId = 1;
 	LastSessionSettings->Set(FName("MatchType"), MatchType, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 }
 
@@ -115,7 +123,7 @@ void UDustLinkSubsystem::FindSessions(const int32 MaxSearchResults)
 {
 	if (!OnlineSessionInterface.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process creation."), *GetClass()->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process search."), *GetClass()->GetName());
 		return;
 	}
 
@@ -140,14 +148,17 @@ void UDustLinkSubsystem::FindSessions(const int32 MaxSearchResults)
  * 
  * @param SessionResult The result of a session search containing session details.
  */
-void UDustLinkSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult)
+void UDustLinkSubsystem::JoinSession(FOnlineSessionSearchResult& SessionResult)
 {
 	if (!OnlineSessionInterface.IsValid())
 	{
 		DustLinkOnJoinSessionComplete.Broadcast(EOnJoinSessionCompleteResult::UnknownError);
-		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process creation."), *GetClass()->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process joining."), *GetClass()->GetName());
 		return;
 	}
+
+	SessionResult.Session.SessionSettings.bUsesPresence = true;
+	SessionResult.Session.SessionSettings.bUseLobbiesIfAvailable = true;
 
 	JoinSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
 
@@ -165,7 +176,20 @@ void UDustLinkSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionRe
  */
 void UDustLinkSubsystem::DestroySession()
 {
-	//@TODO: Awaiting implementatio
+	if (!OnlineSessionInterface.IsValid())
+	{
+		DustLinkOnDestroySessionComplete.Broadcast(false);
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process deletion."), *GetClass()->GetName());
+		return;
+	}
+
+	DestroySessionCompleteDelegateHandle = OnlineSessionInterface->AddOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegate);
+
+	if (!OnlineSessionInterface->DestroySession(NAME_GameSession))
+	{
+		OnlineSessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
+		DustLinkOnDestroySessionComplete.Broadcast(false);
+	}
 }
 
 /**
@@ -175,7 +199,20 @@ void UDustLinkSubsystem::DestroySession()
  */
 void UDustLinkSubsystem::StartSession()
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface.IsValid())
+	{
+		DustLinkOnJoinSessionComplete.Broadcast(EOnJoinSessionCompleteResult::UnknownError);
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session is no longer valid to process session start."), *GetClass()->GetName());
+		return;
+	}
+
+	StartSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegate);
+
+	if (!OnlineSessionInterface->StartSession(NAME_GameSession))
+	{
+		OnlineSessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegateHandle);
+		DustLinkOnStartSessionComplete.Broadcast(false);
+	}
 }
 
 /**
@@ -247,9 +284,22 @@ void UDustLinkSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSession
  * @param SessionName The name of the session that was destroyed.
  * @param bWasSuccessful Whether the session was successfully destroyed.
  */
-void UDustLinkSubsystem::OnDestroySessionComplete(FName SessionName, bool bWasSuccessful)
+void UDustLinkSubsystem::OnDestroySessionComplete(FName SessionName, const bool bWasSuccessful)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session Interface is not defined."), *GetClass()->GetName());
+		return;
+	}
+
+	OnlineSessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
+	DustLinkOnDestroySessionComplete.Broadcast(bWasSuccessful);
+
+	if (bWasSuccessful && bCreateSessionOnDestroy)
+	{
+		bCreateSessionOnDestroy = false;
+		CreateSession(LastNumPublicConnections, LastMatchType);
+	}
 }
 
 /**
@@ -262,5 +312,12 @@ void UDustLinkSubsystem::OnDestroySessionComplete(FName SessionName, bool bWasSu
  */
 void UDustLinkSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful)
 {
-	//@TODO: Awaiting implementation
+	if (!OnlineSessionInterface)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Session Interface is not defined."), *GetClass()->GetName());
+		return;
+	}
+
+	OnlineSessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegateHandle);
+	DustLinkOnStartSessionComplete.Broadcast(bWasSuccessful);
 }

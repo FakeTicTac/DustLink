@@ -14,13 +14,15 @@
  * @brief Sets up the menu and its components.
  *
  * This function initializes the menu widget, binds necessary events, and prepares it for display.
- * It also configures the default session settings, such as the number of public connections
- * and the type of match. This method should be called before adding the widget to the viewport.
+ * It also configures the default session settings, such as the number of public connections,
+ * the type of match, and the path to the lobby level. This method should be called before adding
+ * the widget to the viewport.
  *
  * @param NumberOfPublicConnections The default number of player slots available in the session (default is 4).
  * @param TypeOfMatch A string identifier for the session type (e.g., "Deathmatch", "Coop"). Default is "Error404".
+ * @param LobbyPath The path to the lobby level where players will gather before starting the session. Default is "/Game/ThirdPerson/Maps/Lobby".
  */
-void UDustLinkMenu::MenuSetup(const int32 NumberOfPublicConnections, FString TypeOfMatch)
+void UDustLinkMenu::MenuSetup(const int32 NumberOfPublicConnections, FString TypeOfMatch, FString LobbyPath)
 {
 	AddToViewport();
 	SetVisibility(ESlateVisibility::Visible);
@@ -61,6 +63,7 @@ void UDustLinkMenu::MenuSetup(const int32 NumberOfPublicConnections, FString Typ
 
 	NumPublicConnections = NumberOfPublicConnections;
 	MatchType = TypeOfMatch;
+	PathToLobby = FString::Printf(TEXT("%s?listen"), *LobbyPath);
 
 	if (DustLinkSubsystem)
 	{
@@ -147,10 +150,14 @@ void UDustLinkMenu::NativeDestruct()
  */
 void UDustLinkMenu::OnCreateSession(const bool bWasSuccessful)
 {
-	if (!bWasSuccessful) return;
+	if (!bWasSuccessful)
+	{
+		HostButton->SetIsEnabled(true);
+		return;
+	}
 
 	// Send player to the multiplayer map
-	if (UWorld* World = GetWorld()) World->ServerTravel("/Game/ThirdPerson/Maps/Lobby?listen");
+	if (UWorld* World = GetWorld()) World->ServerTravel(PathToLobby);
 }
 
 /**
@@ -163,7 +170,9 @@ void UDustLinkMenu::OnCreateSession(const bool bWasSuccessful)
  */
 void UDustLinkMenu::OnDestroySession(const bool bWasSuccessful)
 {
-	
+	if (!bWasSuccessful) return;
+
+	if (UWorld* World = GetWorld()) World->ServerTravel("/Game/ThirdPerson/Maps/ThirdPerson");
 }
 
 /**
@@ -176,7 +185,12 @@ void UDustLinkMenu::OnDestroySession(const bool bWasSuccessful)
  */
 void UDustLinkMenu::OnStartSession(const bool bWasSuccessful)
 {
-	
+	if (!bWasSuccessful) return;
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(1, 15.f, FColor::Orange, "Starting Game");
+	}
 }
 
 /**
@@ -206,6 +220,11 @@ void UDustLinkMenu::OnFindSessions(const TArray<FOnlineSessionSearchResult>& Ses
 			DustLinkSubsystem->JoinSession(Result);
 			break;
 		}
+	}
+
+	if (!bWasSuccessful || SessionResults.Num() == 0)
+	{
+		JoinButton->SetIsEnabled(true);
 	}
 }
 
@@ -246,6 +265,8 @@ void UDustLinkMenu::OnJoinSession(const EOnJoinSessionCompleteResult::Type Resul
 		return;
 	}
 
+	if (Result != EOnJoinSessionCompleteResult::Success) JoinButton->SetIsEnabled(true);
+
 	PlayerController->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
 }
 
@@ -257,6 +278,8 @@ void UDustLinkMenu::OnJoinSession(const EOnJoinSessionCompleteResult::Type Resul
  */
 void UDustLinkMenu::HostButtonClicked()
 {
+	HostButton->SetIsEnabled(false);
+	
 	if (!DustLinkSubsystem) 
 	{
 		UE_LOG(LogTemp, Warning, TEXT("%s: Failed to retrieve DustLink subsystem."), *GetClass()->GetName());
@@ -274,6 +297,8 @@ void UDustLinkMenu::HostButtonClicked()
  */
 void UDustLinkMenu::JoinButtonClicked()
 {
+	JoinButton->SetIsEnabled(false);
+	
 	if (!DustLinkSubsystem) 
 	{
 		UE_LOG(LogTemp, Warning, TEXT("%s: Failed to retrieve DustLink subsystem."), *GetClass()->GetName());

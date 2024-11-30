@@ -107,7 +107,7 @@ public:
 	 * 
 	 * @param SessionResult The result of a session search containing session details.
 	 */
-	void JoinSession(const FOnlineSessionSearchResult& SessionResult);
+	void JoinSession(FOnlineSessionSearchResult& SessionResult);
 
 	/**
 	 * @brief Destroys the currently active session.
@@ -210,7 +210,7 @@ protected:
 	 * @param SessionName The name of the session that was destroyed.
 	 * @param bWasSuccessful Whether the session was successfully destroyed.
 	 */
-	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
+	void OnDestroySessionComplete(FName SessionName, const bool bWasSuccessful);
 
 	/**
 	 * @brief Callback for when session start is complete.
@@ -327,4 +327,29 @@ private:
 	 * Allows unbinding when the delegate is no longer needed.
 	 */
 	FDelegateHandle StartSessionCompleteDelegateHandle;
+
+	/**
+	 * @brief Flag indicating whether to create a new session after destroying the current one.
+	 *
+	 * This boolean determines if the system should automatically create a new session
+	 * when the current session is destroyed. Useful for scenarios like restarting a session
+	 * or transitioning to a new session seamlessly.
+	 */
+	bool bCreateSessionOnDestroy { false };
+
+	/**
+	 * @brief Stores the number of public connections for the last session.
+	 *
+	 * This field keeps track of the maximum number of players allowed (excluding the host)
+	 * in the last session. It is typically updated when creating or joining a session.
+	 */
+	int32 LastNumPublicConnections { 0 };
+
+	/**
+	 * @brief Stores the match type for the last session.
+	 *
+	 * This string contains the identifier for the type of match (e.g., "Deathmatch", "Coop")
+	 * for the most recently created or joined session.
+	 */
+	FString LastMatchType { TEXT("") };
 };
